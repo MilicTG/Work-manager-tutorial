@@ -46,6 +46,7 @@ import com.raywenderlich.android.workmanager.R
 import com.raywenderlich.android.workmanager.databinding.ActivityHomeBinding
 import com.raywenderlich.android.workmanager.workers.ImageDownloadWorker
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var activityHomeBinding: ActivityHomeBinding
@@ -72,8 +73,60 @@ class HomeActivity : AppCompatActivity() {
         activityHomeBinding.btnImageDownload.setOnClickListener {
             showLottieAnimation()
             activityHomeBinding.downloadLayout.visibility = View.GONE
-            createOneTimeWorkRequest()
+            createDelayedWorkRequest()
         }
+
+        activityHomeBinding.btnQueryWork.setOnClickListener {
+            queryWorkInfo()
+        }
+    }
+
+    private fun createPeriodicWorkRequest() {
+        val imageWorker =
+            PeriodicWorkRequestBuilder<ImageDownloadWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(constraints)
+                .addTag("imageWork")
+                .build()
+
+        workManager.enqueueUniquePeriodicWork(
+            "periodicImageDownload",
+            ExistingPeriodicWorkPolicy.KEEP,
+            imageWorker
+        )
+        observeWork(imageWorker.id)
+    }
+
+    private fun queryWorkInfo() {
+        // 1
+        val workQuery = WorkQuery.Builder
+            .fromTags(listOf("imageWork"))
+            .addStates(listOf(WorkInfo.State.SUCCEEDED))
+            .addUniqueWorkNames(
+                listOf("oneTimeImageDownload", "delayedImageDownload",
+                    "periodicImageDownload")
+            )
+            .build()
+        // 2
+        workManager.getWorkInfosLiveData(workQuery).observe(this) { workInfos->
+            activityHomeBinding.tvWorkInfo.visibility = View.VISIBLE
+            activityHomeBinding.tvWorkInfo.text =
+                resources.getQuantityString(R.plurals.text_work_desc, workInfos.size,
+                    workInfos.size)
+        }
+    }
+
+    private fun createDelayedWorkRequest() {
+        val imageWorker = OneTimeWorkRequestBuilder<ImageDownloadWorker>()
+            .setConstraints(constraints)
+            .setInitialDelay(30, TimeUnit.SECONDS)
+            .addTag("imageWork")
+            .build()
+        workManager.enqueueUniqueWork(
+            "delayedImageDownload",
+            ExistingWorkPolicy.KEEP,
+            imageWorker
+        )
+        observeWork(imageWorker.id)
     }
 
     private fun createOneTimeWorkRequest() {
@@ -94,18 +147,18 @@ class HomeActivity : AppCompatActivity() {
     private fun observeWork(id: UUID) {
         workManager.getWorkInfoByIdLiveData(id)
             .observe(
-                this, { info ->
-                    if (info != null && info.state.isFinished) {
-                        hideLottieAnimation()
-                        activityHomeBinding.downloadLayout.visibility = View.VISIBLE
+                this
+            ) { info ->
+                if (info != null && info.state.isFinished) {
+                    hideLottieAnimation()
+                    activityHomeBinding.downloadLayout.visibility = View.VISIBLE
 
-                        val uriResult = info.outputData.getString("IMAGE_URI")
-                        if (uriResult != null) {
-                            showDownloadedImage(uriResult.toUri())
-                        }
+                    val uriResult = info.outputData.getString("IMAGE_URI")
+                    if (uriResult != null) {
+                        showDownloadedImage(uriResult.toUri())
                     }
                 }
-            )
+            }
     }
 
     private fun requestStoragePermissions() {
