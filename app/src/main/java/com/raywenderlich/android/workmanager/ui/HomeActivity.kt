@@ -40,51 +40,103 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
+import androidx.work.*
 import com.raywenderlich.android.workmanager.R
 import com.raywenderlich.android.workmanager.databinding.ActivityHomeBinding
+import com.raywenderlich.android.workmanager.workers.ImageDownloadWorker
+import java.util.*
 
 class HomeActivity : AppCompatActivity() {
-  private lateinit var activityHomeBinding: ActivityHomeBinding
+    private lateinit var activityHomeBinding: ActivityHomeBinding
 
-  override fun onCreate(savedInstanceState: Bundle?) {
-    setTheme(R.style.AppTheme)
-    super.onCreate(savedInstanceState)
-    activityHomeBinding = ActivityHomeBinding.inflate(layoutInflater)
-    setContentView(activityHomeBinding.root)
-    activityHomeBinding.tvWorkInfo.visibility = View.GONE
-
-    requestStoragePermissions()
-  }
-
-  private fun requestStoragePermissions() {
-    requestMultiplePermissions.launch(
-      arrayOf(
-        Manifest.permission.READ_EXTERNAL_STORAGE,
-        Manifest.permission.WRITE_EXTERNAL_STORAGE
-      )
-    )
-  }
-
-  private val requestMultiplePermissions =
-    registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    private val workManager by lazy {
+        WorkManager.getInstance(applicationContext)
     }
 
-  private fun showLottieAnimation() {
-    activityHomeBinding.animationView.visibility = View.VISIBLE
-    activityHomeBinding.animationView.playAnimation()
+    private val constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .setRequiresBatteryNotLow(true)
+        .setRequiresStorageNotLow(true)
+        .build()
 
-  }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.AppTheme)
+        super.onCreate(savedInstanceState)
+        activityHomeBinding = ActivityHomeBinding.inflate(layoutInflater)
+        setContentView(activityHomeBinding.root)
+        activityHomeBinding.tvWorkInfo.visibility = View.GONE
 
-  private fun hideLottieAnimation() {
-    activityHomeBinding.animationView.visibility = View.GONE
-    activityHomeBinding.animationView.cancelAnimation()
+        requestStoragePermissions()
 
-  }
+        activityHomeBinding.btnImageDownload.setOnClickListener {
+            showLottieAnimation()
+            activityHomeBinding.downloadLayout.visibility = View.GONE
+            createOneTimeWorkRequest()
+        }
+    }
 
-  private fun showDownloadedImage(resultUri: Uri?) {
-    activityHomeBinding.completeLayout.visibility = View.VISIBLE
-    activityHomeBinding.downloadLayout.visibility = View.GONE
-    hideLottieAnimation()
-    activityHomeBinding.imgDownloaded.setImageURI(resultUri)
-  }
+    private fun createOneTimeWorkRequest() {
+        val imageWorker = OneTimeWorkRequestBuilder<ImageDownloadWorker>()
+            .setConstraints(constraints)
+            .addTag("imageWork")
+            .build()
+
+        workManager.enqueueUniqueWork(
+            "oneTimeImageDownload",
+            ExistingWorkPolicy.KEEP,
+            imageWorker
+        )
+
+        observeWork(imageWorker.id)
+    }
+
+    private fun observeWork(id: UUID) {
+        workManager.getWorkInfoByIdLiveData(id)
+            .observe(
+                this, { info ->
+                    if (info != null && info.state.isFinished) {
+                        hideLottieAnimation()
+                        activityHomeBinding.downloadLayout.visibility = View.VISIBLE
+
+                        val uriResult = info.outputData.getString("IMAGE_URI")
+                        if (uriResult != null) {
+                            showDownloadedImage(uriResult.toUri())
+                        }
+                    }
+                }
+            )
+    }
+
+    private fun requestStoragePermissions() {
+        requestMultiplePermissions.launch(
+            arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+        )
+    }
+
+    private val requestMultiplePermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        }
+
+    private fun showLottieAnimation() {
+        activityHomeBinding.animationView.visibility = View.VISIBLE
+        activityHomeBinding.animationView.playAnimation()
+
+    }
+
+    private fun hideLottieAnimation() {
+        activityHomeBinding.animationView.visibility = View.GONE
+        activityHomeBinding.animationView.cancelAnimation()
+
+    }
+
+    private fun showDownloadedImage(resultUri: Uri?) {
+        activityHomeBinding.completeLayout.visibility = View.VISIBLE
+        activityHomeBinding.downloadLayout.visibility = View.GONE
+        hideLottieAnimation()
+        activityHomeBinding.imgDownloaded.setImageURI(resultUri)
+    }
 }

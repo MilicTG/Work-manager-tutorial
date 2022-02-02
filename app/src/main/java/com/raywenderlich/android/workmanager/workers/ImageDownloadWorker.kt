@@ -39,12 +39,17 @@ package com.raywenderlich.android.workmanager.workers
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
+import com.raywenderlich.android.workmanager.utils.getUriFromUrl
+import kotlinx.coroutines.delay
 
 class ImageDownloadWorker(
-  private val context: Context,
-  private val workerParameters: WorkerParameters
+    private val context: Context,
+    private val workerParameters: WorkerParameters
 ) : CoroutineWorker(context, workerParameters) {
-  override suspend fun doWork(): Result {
-    TODO("Not yet implemented")
-  }
+    override suspend fun doWork(): Result {
+        delay(10000)
+        val savedUri = context.getUriFromUrl()
+        return Result.success(workDataOf("IMAGE_URI" to savedUri.toString()))
+    }
 }
